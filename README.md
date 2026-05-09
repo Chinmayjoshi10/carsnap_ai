@@ -11,7 +11,7 @@ CardSnap AI is a cutting-edge business networking application designed to stream
 *   **Database**: Firebase Firestore
 *   **AI Engine**: Google Gemini Pro / Google Vision API
 *   **Authentication**: Firebase Auth / Google OAuth
-*   **Email Integration**: Gmail API / Resend
+*   **Email Integration**: Gmail API
 
 ## Features
 
