@@ -5,6 +5,7 @@ import ContactForm from '../components/ContactForm'
 import EmailEditor from '../components/EmailEditor'
 import StatusBanner from '../components/StatusBanner'
 import GmailConnect from '../components/GmailConnect'
+import ProcessingOverlay from '../components/scanner/ProcessingOverlay'
 import { extractCard, sendEmail, saveContact, updateContact } from '../lib/api'
 
 const emptyContact = {
@@ -32,8 +33,14 @@ export default function Capture() {
   const [status, setStatus] = useState(null)
   const [extracted, setExtracted] = useState(false)
   const [savedId, setSavedId] = useState(null)
-  const [extraData, setExtraData] = useState({})  // image URLs, raw text, etc.
+  const [extraData, setExtraData] = useState({})
   const lastSentRef = useRef(0)
+
+  // Processing overlay state
+  const [processing, setProcessing] = useState(false)
+  const [processingStep, setProcessingStep] = useState(null)
+  const [processingError, setProcessingError] = useState(null)
+  const [processingHasBack, setProcessingHasBack] = useState(false)
 
   // Called when back image is captured or skipped
   const handleBackCaptured = async (value) => {
@@ -47,19 +54,23 @@ export default function Capture() {
   }
 
   const runExtraction = async (front, back) => {
-    // Progressive status messages
-    setStatus({ type: 'loading', message: back ? 'Reading front side...' : 'Reading card...' })
+    setProcessing(true)
+    setProcessingError(null)
+    setProcessingHasBack(!!back)
+    setProcessingStep('Reading card details...')
 
     try {
       if (back) {
-        // Brief delay for UX — show front reading message
         await new Promise(r => setTimeout(r, 800))
-        setStatus({ type: 'loading', message: 'Reading back side...' })
+        setProcessingStep('Analyzing back side...')
         await new Promise(r => setTimeout(r, 600))
-        setStatus({ type: 'loading', message: 'Understanding business context...' })
+        setProcessingStep('Understanding business context...')
       }
 
       const data = await extractCard(front, back)
+
+      setProcessingStep('Generating intelligence...')
+      await new Promise(r => setTimeout(r, 500))
 
       setContact({
         full_name: data.full_name || '',
@@ -78,18 +89,35 @@ export default function Capture() {
         confidence: data.confidence || 0,
       })
       setEmailSubject(data.email_subject || '')
-      setEmailDraft(data.email_draft || '')
+
+      // Replace [Your Name] placeholder with the signed-in user's actual name
+      let draft = data.email_draft || ''
+      if (user) {
+        const senderName = user.displayName || user.email?.split('@')[0] || ''
+        if (senderName) {
+          draft = draft.replace(/\[Your Name\]/gi, senderName)
+        }
+      }
+      setEmailDraft(draft)
       setExtraData({
         raw_card_text: data.raw_card_text || '',
         front_image_url: data.front_image_url || '',
         back_image_url: data.back_image_url || '',
       })
       setExtracted(true)
+      setProcessing(false)
+      setProcessingStep(null)
       setStatus({ type: 'success', message: 'Card analyzed — review and edit below' })
       setTimeout(() => setStatus(null), 3000)
     } catch (err) {
-      setStatus({ type: 'error', message: err.message || 'Could not read card. Try a clearer photo.' })
+      setProcessingError(err.message || 'Could not read card. Try a clearer photo.')
     }
+  }
+
+  const handleDismissProcessingError = () => {
+    setProcessing(false)
+    setProcessingError(null)
+    setProcessingStep(null)
   }
 
   const handleFrontCaptured = (base64) => {
@@ -158,6 +186,16 @@ export default function Capture() {
 
   return (
     <div className="flex flex-col gap-5 px-4 pt-6 pb-10 page-enter">
+
+      {/* Processing overlay */}
+      <ProcessingOverlay
+        visible={processing}
+        currentStep={processingStep}
+        hasBack={processingHasBack}
+        frontImage={frontImage}
+        error={processingError}
+        onDismissError={handleDismissProcessingError}
+      />
 
       {/* Hero text */}
       {!extracted && !frontImage && (

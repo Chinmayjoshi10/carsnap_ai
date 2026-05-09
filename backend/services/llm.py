@@ -77,7 +77,7 @@ Email rules — THIS IS CRITICAL, write it like a REAL HUMAN, not an AI:
   * Keep it SHORT
   * DO NOT sound corporate or stiff
   * End with something simple like "Let's grab coffee sometime!" or "Would love to stay in touch."
-  * Sign off with just:\\n\\nCheers,\\n[Your Name]
+  * Sign off with a natural closing of your choice (e.g., "Warm regards,", "Cheers,", "Best regards,") followed by:\\n[Your Name]
   * Use [Your Name] as a placeholder — nothing else after it
 
 If text comes from both sides of the card, MERGE all information intelligently:
