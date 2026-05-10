@@ -1,4 +1,4 @@
-import { useState, useRef, useContext } from 'react'
+import { useState, useRef, useContext, useEffect } from 'react'
 import { AuthContext } from '../App'
 import CardUploader from '../components/CardUploader'
 import ContactForm from '../components/ContactForm'
@@ -24,7 +24,7 @@ const SectionLabel = ({ children }) => (
 )
 
 export default function Capture() {
-  const { user, gmailConnected, setGmailConnected } = useContext(AuthContext)
+  const { user, gmailConnected, setGmailConnected, handleSignIn } = useContext(AuthContext)
   const [frontImage, setFrontImage] = useState(null)
   const [backImage, setBackImage] = useState(null)
   const [contact, setContact] = useState(emptyContact)
@@ -41,6 +41,16 @@ export default function Capture() {
   const [processingStep, setProcessingStep] = useState(null)
   const [processingError, setProcessingError] = useState(null)
   const [processingHasBack, setProcessingHasBack] = useState(false)
+
+  // Dynamically update placeholder if user signs in after extraction
+  useEffect(() => {
+    if (user && emailDraft && /\[Your Name\]/i.test(emailDraft)) {
+      const senderName = user.displayName || user.email?.split('@')[0] || ''
+      if (senderName) {
+        setEmailDraft(prev => prev.replace(/\[Your Name\]/gi, senderName))
+      }
+    }
+  }, [user, emailDraft])
 
   // Called when back image is captured or skipped
   const handleBackCaptured = async (value) => {
@@ -230,13 +240,14 @@ export default function Capture() {
             onStatusChange={setGmailConnected}
           />
         ) : (
-          <div
-            className="rounded-2xl px-4 py-3 text-sm bg-surface"
+          <button
+            onClick={handleSignIn}
+            className="w-full text-left rounded-2xl px-4 py-3 text-sm bg-surface hover:bg-gray-50 transition-colors"
             style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)', borderLeft: '3px solid #2563EB' }}
           >
             <p className="text-tx-primary font-medium">Sign in required</p>
             <p className="text-tx-muted text-xs mt-1">Sign in with Google and connect Gmail to send follow-up emails.</p>
-          </div>
+          </button>
         )}
       </div>
 

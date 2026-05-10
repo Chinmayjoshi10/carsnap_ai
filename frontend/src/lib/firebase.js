@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, browserLocalPersistence, setPersistence } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -21,6 +21,10 @@ try {
     app = initializeApp(firebaseConfig)
     db = getFirestore(app)
     auth = getAuth(app)
+    // Persist auth across page reloads / OAuth redirects
+    setPersistence(auth, browserLocalPersistence).catch((e) =>
+      console.warn('Auth persistence setup failed:', e.message)
+    )
   } else {
     console.warn('Firebase API key not configured — auth features disabled')
   }
@@ -31,24 +35,51 @@ try {
 export { db, auth }
 
 /**
- * Sign in with Google via Firebase Auth popup.
+ * Process the result of a Firebase signInWithRedirect call.
+ * Must be invoked once on app load — Firebase needs this to complete sign-in
+ * after the OAuth redirect returns. Without it, the user object may not populate.
+ */
+export async function completeFirebaseRedirect() {
+  if (!auth) return null
+  try {
+    const result = await getRedirectResult(auth)
+    return result?.user || null
+  } catch (e) {
+    console.warn('getRedirectResult failed:', e.message)
+    return null
+  }
+}
+
+/**
+ * Sign in with Google via Firebase Auth.
+ * Tries popup first (instant, gives full user incl. displayName + photoURL);
+ * falls back to redirect if the popup is blocked or unsupported.
+ *
+ * Only requests basic profile + email — the gmail.send scope is acquired
+ * separately via startGmailAuthRedirect when the user clicks Connect Gmail.
  */
 export async function signInWithGoogle() {
   if (!auth) throw new Error('Firebase Auth not configured')
 
   const provider = new GoogleAuthProvider()
-  provider.addScope('https://www.googleapis.com/auth/gmail.send')
-  provider.setCustomParameters({
-    access_type: 'offline',
-    prompt: 'consent',
-  })
+  provider.addScope('email')
+  provider.addScope('profile')
 
-  const result = await signInWithPopup(auth, provider)
-  const credential = GoogleAuthProvider.credentialFromResult(result)
-
-  return {
-    user: result.user,
-    accessToken: credential?.accessToken,
+  try {
+    const result = await signInWithPopup(auth, provider)
+    return { user: result.user }
+  } catch (err) {
+    const code = err?.code || ''
+    const popupIssue =
+      code === 'auth/popup-blocked' ||
+      code === 'auth/popup-closed-by-user' ||
+      code === 'auth/cancelled-popup-request' ||
+      code === 'auth/operation-not-supported-in-this-environment'
+    if (popupIssue) {
+      await signInWithRedirect(auth, provider)
+      return null
+    }
+    throw err
   }
 }
 

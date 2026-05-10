@@ -1,6 +1,6 @@
 import { createContext, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
-import { auth, signInWithGoogle, signOutUser, checkGmailRedirect } from './lib/firebase'
+import { auth, signInWithGoogle, signOutUser, checkGmailRedirect, completeFirebaseRedirect } from './lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 import { getGmailStatus, connectGmail } from './lib/api'
 import Capture from './pages/Capture'
@@ -41,7 +41,13 @@ function Nav({ user, onSignIn, onSignOut }) {
               title={`Signed in as ${user.email}`}
             >
               {user.photoURL ? (
-                <img src={user.photoURL} alt="" className="w-6 h-6 rounded-full border border-white/20" />
+                <img
+                  src={user.photoURL}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="w-6 h-6 rounded-full border border-white/20 object-cover"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                />
               ) : (
                 <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-medium">
                   {user.displayName?.[0] || user.email?.[0] || '?'}
@@ -74,6 +80,11 @@ export default function App() {
       setAuthLoading(false)
       return
     }
+
+    // Complete any pending signInWithRedirect — required for the user
+    // object (incl. displayName + photoURL) to populate after OAuth return.
+    completeFirebaseRedirect()
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser)
       if (firebaseUser) {
@@ -129,7 +140,7 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ user, gmailConnected, setGmailConnected, authLoading }}>
+    <AuthContext.Provider value={{ user, gmailConnected, setGmailConnected, authLoading, handleSignIn }}>
       <BrowserRouter>
         <div className="max-w-lg mx-auto min-h-screen bg-bg">
           <Nav user={user} onSignIn={handleSignIn} onSignOut={handleSignOut} />
