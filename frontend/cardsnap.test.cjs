@@ -1,270 +1,304 @@
-const { test, expect } = require('@playwright/test');
-const path = require('path');
+// CardSnap end-to-end Playwright suite.
+// Run: `cd frontend && npx playwright test`
+// Requires backend on :8000 and frontend on :3000 (see playwright.config.cjs).
 
-const BASE_URL = 'http://localhost:3000';
-const TEST_CARD_PATH = path.resolve(__dirname, 'test_assets', 'test_card.jpg');
-const MOBILE_VIEWPORT = { width: 390, height: 844 };
+const { test, expect } = require('@playwright/test')
+const path = require('path')
 
-test.describe('CardSnap Frontend — Full Test Suite', () => {
+const TEST_CARD = path.resolve(__dirname, 'test_assets', 'test_card.jpg')
 
-  // 3.1 Capture page loads
-  test('3.1 — Capture page loads correctly', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    await expect(page.locator('text=CardSnap')).toBeVisible();
-    await expect(page.locator('a[href="/"]')).toBeVisible();
-    await expect(page.locator('a[href="/contacts"]')).toBeVisible();
-    await expect(page.locator('text=Tap to capture or upload')).toBeVisible();
-  });
+// Deterministic mock /extract payload — avoids LLM/OCR variance in CI.
+const MOCK_EXTRACT = {
+  full_name: 'Priya Sharma',
+  job_title: 'Founder',
+  company: 'Lotus Designs',
+  emails: ['priya@lotusdesigns.in'],
+  phones: ['+91 98765 43210'],
+  address: '12 MG Road, Bangalore 560001',
+  website: 'lotusdesigns.in',
+  linkedin: 'linkedin.com/in/priyasharma',
+  social_handles: ['@lotusdesigns'],
+  services: ['Brand Identity', 'Print Design'],
+  industry_tags: ['Design', 'Branding'],
+  business_summary: 'Boutique design studio specializing in heritage brands.',
+  notes: '',
+  confidence: 0.92,
+  email_subject: 'Great connecting with you, Priya',
+  email_draft: 'Hi Priya,\n\nIt was lovely meeting you. I would love to stay in touch.\n\nWarm regards,\n[Your Name]',
+  raw_card_text: 'PRIYA SHARMA | Founder | Lotus Designs',
+  front_image_url: '',
+  back_image_url: '',
+}
 
-  // 3.2 Contacts page loads
-  test('3.2 — Contacts page loads correctly', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(`${BASE_URL}/contacts`);
-    await expect(page.locator('text=Saved Contacts')).toBeVisible();
-    await expect(page.locator('input[placeholder*="Search"]')).toBeVisible();
-  });
+// Reusable network mocks installed before page.goto().
+// Patterns are scoped to the backend host (port 8000) so they don't accidentally
+// intercept SPA route navigations served by the Vite dev server on :3000.
+const API = 'http://localhost:8000'
 
-  // 3.3 Navigation
-  test('3.3 — Navigation between pages works', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    await page.click('a[href="/contacts"]');
-    await expect(page).toHaveURL(`${BASE_URL}/contacts`);
-    await expect(page.locator('text=Saved Contacts')).toBeVisible();
-    await page.click('a[href="/"]');
-    await expect(page).toHaveURL(`${BASE_URL}/`);
-    await expect(page.locator('text=Tap to capture or upload')).toBeVisible();
-  });
+async function installMocks(page, { extract = MOCK_EXTRACT, contacts = [], gmailConnected = false } = {}) {
+  await page.route(`${API}/extract`, route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(extract) })
+  )
+  await page.route(`${API}/contacts`, route => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contacts) })
+    }
+    return route.continue()
+  })
+  await page.route(`${API}/save-contact`, route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id: 'mock_id_123' }) })
+  )
+  await page.route(`${API}/auth/google/status/*`, route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ gmail_connected: gmailConnected }) })
+  )
+}
 
-  // 3.4 File upload triggers extraction
-  test('3.4 — File upload triggers extraction', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('text=Reading card')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=Card read successfully')).toBeVisible({ timeout: 60000 });
-  });
+// Drive the multi-step capture: upload front, then skip back, wait for extracted form.
+async function uploadAndExtract(page) {
+  const launcherInput = page.locator('.cs-launcher input[type="file"]')
+  await launcherInput.setInputFiles(TEST_CARD)
+  // Now in back-prompt phase
+  await page.click('text=Skip — continue with front only')
+  // Wait for extracted UI (Contact Intelligence + Follow-up Email sections)
+  await expect(page.getByText('Contact Intelligence')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Follow-up Email').first()).toBeVisible()
+}
 
-  // 3.5 Extracted fields populated and editable
-  test('3.5 — Extracted fields are populated and editable', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    // Wait for textarea (email draft) — appears only after extraction completes
-    await expect(page.locator('textarea')).toBeVisible({ timeout: 120000 });
-    const nameField = page.locator('input[type="text"]').first();
-    const nameValue = await nameField.inputValue();
-    expect(nameValue.length).toBeGreaterThan(0);
-    await nameField.click({ clickCount: 3 });
-    await nameField.fill('Rajesh Kumar (Edited)');
-    await expect(nameField).toHaveValue('Rajesh Kumar (Edited)');
-    const emailDraft = page.locator('textarea');
-    const draftValue = await emailDraft.inputValue();
-    expect(draftValue.length).toBeGreaterThan(20);
-  });
+test.describe('CardSnap — Smoke (unauthenticated)', () => {
 
-  // 3.6 Email draft is editable
-  test('3.6 — Email draft is editable', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('textarea')).toBeVisible({ timeout: 120000 });
-    const textarea = page.locator('textarea');
-    await textarea.click();
-    await textarea.fill('Custom email content written by user during test.');
-    await expect(textarea).toHaveValue('Custom email content written by user during test.');
-  });
+  test('1. Capture page renders hero + uploader', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: 'Capture a card' })).toBeVisible()
+    await expect(page.locator('.cs-launcher')).toBeVisible()
+    await expect(page.locator('.cs-launcher input[type="file"]')).toBeAttached()
+  })
 
-  // 3.7 Send button disabled without email
-  test('3.7 — Send Email button disabled when no email', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('text=Card read successfully')).toBeVisible({ timeout: 60000 });
-    const emailField = page.locator('input[type="email"]');
-    await emailField.click({ clickCount: 3 });
-    await emailField.fill('');
-    const sendBtn = page.locator('button:has-text("Send Email")');
-    await expect(sendBtn).toBeDisabled();
-  });
+  test('2. Contacts page renders heading + search', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/contacts')
+    await expect(page.getByRole('heading', { name: 'Contacts' })).toBeVisible()
+    await expect(page.getByPlaceholder('Search contacts...')).toBeVisible()
+  })
 
-  // 3.8 Save Contact
-  test('3.8 — Save Contact button works', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('text=Card read successfully')).toBeVisible({ timeout: 60000 });
-    await page.click('button:has-text("Save Contact")');
-    await expect(page.locator('text=Contact saved')).toBeVisible({ timeout: 10000 });
-  });
+  test('3. Nav switches between Capture and Contacts', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await page.click('a[href="/contacts"]')
+    await expect(page).toHaveURL(/\/contacts$/)
+    await expect(page.getByRole('heading', { name: 'Contacts' })).toBeVisible()
+    await page.click('a[href="/"]')
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('heading', { name: 'Capture a card' })).toBeVisible()
+  })
 
-  // 3.9 Send Email real send (only to own email in free tier)
-  test('3.9 — Send Email button triggers real send', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('text=Card read successfully')).toBeVisible({ timeout: 60000 });
-    // Resend free tier: can only send to own email
-    const emailField = page.locator('input[type="email"]');
-    await emailField.click({ clickCount: 3 });
-    await emailField.fill('chinmay.joshi0010@gmail.com');
-    const sendBtn = page.locator('button:has-text("Send Email")');
-    await expect(sendBtn).not.toBeDisabled();
-    await sendBtn.click();
-    await expect(page.locator('text=Sending email')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=Email sent')).toBeVisible({ timeout: 15000 });
-  });
+  test('4. Nav is fixed at top', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    const pos = await page.locator('nav').first().evaluate(el => getComputedStyle(el).position)
+    expect(pos).toBe('fixed')
+  })
 
-  // 3.10 Card image preview
-  test('3.10 — Card image preview shows after upload', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('img[alt="Card preview"]')).toBeVisible({ timeout: 5000 });
-  });
+  test('5. No horizontal scroll on mobile viewport', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    const { sw, cw } = await page.evaluate(() => ({
+      sw: document.documentElement.scrollWidth,
+      cw: document.documentElement.clientWidth,
+    }))
+    expect(sw).toBeLessThanOrEqual(cw + 5)
+  })
 
-  // 3.11 X button clears image
-  test('3.11 — X button clears image and resets form', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('img[alt="Card preview"]')).toBeVisible({ timeout: 5000 });
-    await page.click('button:has-text("✕")');
-    await expect(page.locator('text=Tap to capture or upload')).toBeVisible();
-  });
+  test('6. File input declares capture=environment and accept=image/*', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    const input = page.locator('.cs-launcher input[type="file"]')
+    await expect(input).toHaveAttribute('capture', 'environment')
+    await expect(input).toHaveAttribute('accept', 'image/*')
+  })
 
-  // 3.12 Capture another card resets
-  test('3.12 — Capture another card resets full form', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('textarea')).toBeVisible({ timeout: 120000 });
-    await page.click('text=Capture another card');
-    await expect(page.locator('text=Tap to capture or upload')).toBeVisible();
-    await expect(page.locator('input[type="email"]')).not.toBeVisible();
-  });
+  test('7. Sign-in CTA visible when unauthenticated', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    // Top-right nav sign in
+    await expect(page.getByRole('button', { name: /^Sign in$/i })).toBeVisible()
+    // Page-level sign-in prompt under Send via Gmail
+    await expect(page.getByText('Sign in required')).toBeVisible()
+  })
+})
 
-  // 3.13 Contacts list
-  test('3.13 — Contacts list shows saved contacts', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(`${BASE_URL}/contacts`);
-    await page.waitForTimeout(3000);
-    const contacts = page.locator('[class*="rounded-2xl"]');
-    const count = await contacts.count();
-    expect(count).toBeGreaterThan(0);
-  });
+test.describe('CardSnap — Capture flow (mocked /extract)', () => {
 
-  // 3.14 Contact search
-  test('3.14 — Contact search filters results', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(`${BASE_URL}/contacts`);
-    await page.waitForTimeout(3000);
-    const searchInput = page.locator('input[placeholder*="Search"]');
-    await searchInput.fill('ZZZNONEXISTENT999');
-    await page.waitForTimeout(500);
-    await expect(page.locator('text=No contacts match')).toBeVisible();
-  });
+  test('8. Upload → skip back → contact form is populated', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await uploadAndExtract(page)
+    // Name field populated from mock
+    await expect(page.locator('input[type="text"]').filter({ hasNotText: '' }).first()).toHaveValue(/Priya/i)
+    // Email field populated
+    await expect(page.locator('input[type="email"]')).toHaveValue('priya@lotusdesigns.in')
+    // Email body populated
+    await expect(page.locator('textarea')).toContainText('Hi Priya')
+  })
 
-  // 3.15 Sent badge
-  test('3.15 — Email sent badge shows on sent contacts', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(`${BASE_URL}/contacts`);
-    await page.waitForTimeout(3000);
-    // Just check if Sent badges exist — passes regardless (informational)
-    const sentBadge = page.locator('text=Sent').first();
-    const visible = await sentBadge.isVisible();
-    console.log(`Sent badge visible: ${visible}`);
-  });
+  test('9. Contact name field is editable', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await uploadAndExtract(page)
+    const nameField = page.locator('input[type="text"]').first()
+    await nameField.fill('Edited Name')
+    await expect(nameField).toHaveValue('Edited Name')
+  })
 
-  // 3.16 No horizontal scroll
-  test('3.16 — No horizontal scroll on mobile', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-    expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 5);
-  });
+  test('10. Email subject + body editable', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await uploadAndExtract(page)
+    const subject = page.getByPlaceholder('Email subject line...')
+    await subject.fill('Custom subject line')
+    await expect(subject).toHaveValue('Custom subject line')
+    const body = page.locator('textarea')
+    await body.fill('Custom body content from test.')
+    await expect(body).toHaveValue('Custom body content from test.')
+  })
 
-  // 3.17 capture=environment attribute
-  test('3.17 — file input has capture=environment', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const captureAttr = await page.locator('input[type="file"]').getAttribute('capture');
-    expect(captureAttr).toBe('environment');
-  });
+  test('11. Send button shows "Sign in first" when unauthenticated and is disabled', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await uploadAndExtract(page)
+    const sendBtn = page.locator('button', { hasText: 'Sign in first' })
+    await expect(sendBtn).toBeVisible()
+    await expect(sendBtn).toBeDisabled()
+  })
 
-  // 3.18 accept attribute
-  test('3.18 — accept attribute is image/*', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const acceptAttr = await page.locator('input[type="file"]').getAttribute('accept');
-    expect(acceptAttr).toBe('image/*');
-  });
+  test('12. Save Contact succeeds (mocked) and shows confirmation', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await uploadAndExtract(page)
+    await page.click('button:has-text("Save Contact")')
+    await expect(page.getByText(/Contact saved/i)).toBeVisible({ timeout: 10_000 })
+  })
 
-  // 3.19 Button touch target size
-  test('3.19 — Buttons are minimum 44px tall', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    await page.locator('input[type="file"]').setInputFiles(TEST_CARD_PATH);
-    await expect(page.locator('text=Card read successfully')).toBeVisible({ timeout: 60000 });
-    const sendBtn = page.locator('button:has-text("Send Email")');
-    const box = await sendBtn.boundingBox();
-    expect(box?.height).toBeGreaterThanOrEqual(44);
-  });
+  test('13. "Capture another card" resets the form', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await uploadAndExtract(page)
+    await page.click('text=Capture another card')
+    await expect(page.locator('.cs-launcher')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Capture a card' })).toBeVisible()
+  })
 
-  // 3.20 Nav sticky
-  test('3.20 — Nav bar is fixed at top', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    const nav = page.locator('nav').first();
-    const position = await nav.evaluate(el => window.getComputedStyle(el).position);
-    expect(position).toBe('fixed');
-  });
+  test('14. Send Email button is min 44px tall (touch target)', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await uploadAndExtract(page)
+    const btn = page.locator('button', { hasText: /Sign in first|Connect Gmail|Send via Gmail/ })
+    const box = await btn.boundingBox()
+    expect(box?.height || 0).toBeGreaterThanOrEqual(44)
+  })
+})
 
-  // 3.21 Error handling
-  test('3.21 — Error shows when backend is unreachable', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.route('**/extract', route => route.abort('failed'));
-    await page.goto(BASE_URL);
-    await page.locator('input[type="file"]').setInputFiles(TEST_CARD_PATH);
-    // Should show error — look for red-colored status banner
-    await expect(page.locator('.bg-red-50, [class*="red"]').first()).toBeVisible({ timeout: 15000 });
-  });
+test.describe('CardSnap — Error handling', () => {
 
-  // 3.22 Camera input accessible
-  test('3.22 — Camera input element present and accessible', async ({ browser }) => {
-    const context = await browser.newContext({
-      viewport: MOBILE_VIEWPORT,
-      permissions: ['camera'],
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
-    });
-    const page = await context.newPage();
-    await page.goto(BASE_URL);
-    const fileInput = page.locator('input[type="file"][capture="environment"]');
-    await expect(fileInput).toBeAttached();
-    const uploadLabel = page.locator('label').filter({ has: fileInput });
-    await expect(uploadLabel).toBeVisible();
-    const box = await uploadLabel.boundingBox();
-    expect(box?.width).toBeGreaterThan(200);
-    expect(box?.height).toBeGreaterThan(80);
-    await context.close();
-  });
+  test('15. Extract API failure surfaces a visible error', async ({ page }) => {
+    // Override /extract to return 502 BEFORE other mocks
+    await page.route(`${API}/extract`, route =>
+      route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ detail: 'OCR failed: simulated' }) })
+    )
+    await page.route(`${API}/contacts`, route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+    )
+    await page.route(`${API}/auth/google/status/*`, route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ gmail_connected: false }) })
+    )
+    await page.goto('/')
+    await page.locator('.cs-launcher input[type="file"]').setInputFiles(TEST_CARD)
+    await page.click('text=Skip — continue with front only')
+    // ProcessingOverlay surfaces the error inline; look for the simulated detail or a retry affordance
+    await expect(page.getByText(/OCR failed|Could not read|Try a clearer photo|simulated/i).first())
+      .toBeVisible({ timeout: 30_000 })
+  })
 
-  // 3.23 Drag and drop
-  test('3.23 — Drag and drop zone is interactive', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto(BASE_URL);
-    await page.locator('label').first().dispatchEvent('dragover', { bubbles: true });
-  });
+  test('16. Network-aborted /extract still surfaces an error', async ({ page }) => {
+    await page.route(`${API}/extract`, route => route.abort('failed'))
+    await page.route(`${API}/auth/google/status/*`, route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ gmail_connected: false }) })
+    )
+    await page.goto('/')
+    await page.locator('.cs-launcher input[type="file"]').setInputFiles(TEST_CARD)
+    await page.click('text=Skip — continue with front only')
+    await expect(page.getByText(/Could not read|failed|error/i).first()).toBeVisible({ timeout: 30_000 })
+  })
+})
 
-});
+test.describe('CardSnap — Contacts page', () => {
+
+  const MOCK_CONTACTS = [
+    {
+      id: 'c1', full_name: 'Alice Chen', company: 'Acme Co', job_title: 'CEO',
+      emails: ['alice@acme.com'], phones: ['+1 555-1111'],
+      industry_tags: ['Tech'], email_sent: true, created_at: '2026-05-01T00:00:00Z',
+    },
+    {
+      id: 'c2', full_name: 'Bob Patel', company: 'Globex', job_title: 'CTO',
+      emails: ['bob@globex.com'], phones: ['+1 555-2222'],
+      industry_tags: ['Finance'], email_sent: false, created_at: '2026-05-02T00:00:00Z',
+    },
+  ]
+
+  test('17. Renders contacts with name/company and search count', async ({ page }) => {
+    await installMocks(page, { contacts: MOCK_CONTACTS })
+    await page.goto('/contacts')
+    await expect(page.getByText('Alice Chen')).toBeVisible()
+    await expect(page.getByText('Bob Patel')).toBeVisible()
+    await expect(page.getByText('2 of 2 contacts')).toBeVisible()
+  })
+
+  test('18. Sent badge appears on emailed contacts', async ({ page }) => {
+    await installMocks(page, { contacts: MOCK_CONTACTS })
+    await page.goto('/contacts')
+    await expect(page.getByText('✓ Sent')).toBeVisible()
+  })
+
+  test('19. Search filters by name', async ({ page }) => {
+    await installMocks(page, { contacts: MOCK_CONTACTS })
+    await page.goto('/contacts')
+    await page.getByPlaceholder('Search contacts...').fill('Alice')
+    await expect(page.getByText('Alice Chen')).toBeVisible()
+    await expect(page.getByText('Bob Patel')).toBeHidden()
+  })
+
+  test('20. Empty-search state on no match', async ({ page }) => {
+    await installMocks(page, { contacts: MOCK_CONTACTS })
+    await page.goto('/contacts')
+    await page.getByPlaceholder('Search contacts...').fill('ZZZNOMATCH')
+    await expect(page.getByText('No contacts match')).toBeVisible()
+  })
+
+  test('21. Clicking a contact card expands details', async ({ page }) => {
+    await installMocks(page, { contacts: MOCK_CONTACTS })
+    await page.goto('/contacts')
+    await page.getByText('Alice Chen').click()
+    await expect(page.getByText('alice@acme.com')).toBeVisible()
+    await expect(page.getByText('+1 555-1111')).toBeVisible()
+  })
+})
+
+test.describe('CardSnap — Mobile UX', () => {
+
+  test('22. Capture page nav links visible on mobile viewport', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/')
+    await expect(page.locator('a[href="/"]')).toBeVisible()
+    await expect(page.locator('a[href="/contacts"]')).toBeVisible()
+  })
+
+  test('23. Active nav link shows underline state', async ({ page }) => {
+    await installMocks(page)
+    await page.goto('/contacts')
+    // The active link is the one styled with full opacity white — assert color
+    const linkColor = await page.locator('a[href="/contacts"]').evaluate(el => getComputedStyle(el).color)
+    // White-ish: rgb(255,255,255)
+    expect(linkColor).toMatch(/rgb\(255,\s*255,\s*255\)/)
+  })
+})
