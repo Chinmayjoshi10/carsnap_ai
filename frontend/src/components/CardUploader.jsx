@@ -115,7 +115,6 @@ export default function CardUploader({ onFrontCaptured, onBackCaptured, frontIma
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               className="hidden"
               onChange={(e) => readFile(e.target.files[0], onBackCaptured)}
             />
@@ -174,12 +173,12 @@ export default function CardUploader({ onFrontCaptured, onBackCaptured, frontIma
         </div>
       )}
 
-      {/* Gallery fallback */}
+      {/* Gallery fallback — no `capture` attribute so mobile opens the photo
+          picker, not the camera. Camera capture goes through CameraOverlay. */}
       <label className="cs-launch-gallery">
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(e) => readFile(e.target.files[0], onFrontCaptured)}
         />

@@ -109,12 +109,14 @@ test.describe('CardSnap — Smoke (unauthenticated)', () => {
     expect(sw).toBeLessThanOrEqual(cw + 5)
   })
 
-  test('6. File input declares capture=environment and accept=image/*', async ({ page }) => {
+  test('6. Gallery input accepts images and does NOT force the camera', async ({ page }) => {
     await installMocks(page)
     await page.goto('/')
     const input = page.locator('.cs-launcher input[type="file"]')
-    await expect(input).toHaveAttribute('capture', 'environment')
     await expect(input).toHaveAttribute('accept', 'image/*')
+    // capture must NOT be set, otherwise mobile opens the camera instead of the gallery
+    const captureAttr = await input.getAttribute('capture')
+    expect(captureAttr).toBeNull()
   })
 
   test('7. Sign-in CTA visible when unauthenticated', async ({ page }) => {

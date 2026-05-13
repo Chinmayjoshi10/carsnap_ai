@@ -158,6 +158,13 @@ def main():
             f"bundle does not reference backend host '{backend_host}' — "
             f"VITE_API_URL may be wrong"
         )
+        # Catch the common mistake of pasting "VITE_API_URL=https://..." into Vercel's
+        # value field. That ends up baked in literally; URL resolution then 405s.
+        if 'VITE_API_URL=' in text or 'VITE_API_URL%3D' in text:
+            raise AssertionError(
+                "bundle contains the literal string 'VITE_API_URL=' — Vercel env var "
+                "value was pasted with the key prefix. Edit Vercel env var to be the URL only."
+            )
         return f"(references {backend_host})"
 
     step("Frontend bundle has correct VITE_API_URL", vite_api_url_baked_in)
