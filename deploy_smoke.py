@@ -169,7 +169,7 @@ def main():
         if not smoke.exists():
             print(f"  {Y}!{N} smoke_test.py not found at {smoke} — skipping")
         else:
-            print(f"  → running {smoke.name} against {backend}\n")
+            print(f"  -> running {smoke.name} against {backend}\n")
             result = subprocess.run(
                 [sys.executable, str(smoke), backend],
                 capture_output=False,

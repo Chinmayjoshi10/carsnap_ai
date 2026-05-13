@@ -2,7 +2,7 @@ import { createContext, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { auth, signInWithGoogle, signOutUser, checkGmailRedirect, completeFirebaseRedirect } from './lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
-import { getGmailStatus, connectGmail } from './lib/api'
+import { getGmailStatus, connectGmail, warmupBackend } from './lib/api'
 import Capture from './pages/Capture'
 import Contacts from './pages/Contacts'
 
@@ -76,6 +76,11 @@ export default function App() {
 
   // Listen for auth state changes
   useEffect(() => {
+    // Wake the backend on first paint. Render free-tier dynos sleep after 15 min;
+    // doing this on mount means the cold start finishes while the user is still
+    // on the launcher screen, not when they hit /extract.
+    warmupBackend()
+
     if (!auth) {
       setAuthLoading(false)
       return
