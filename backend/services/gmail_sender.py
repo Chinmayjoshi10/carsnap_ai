@@ -18,7 +18,7 @@ from email.mime.multipart import MIMEMultipart
 GMAIL_SEND_ENDPOINT = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 
 
-def build_mime_message(to: str, subject: str, body_text: str, from_email: str = None) -> str:
+def build_mime_message(to: str, subject: str, body_text: str, from_email: str = None, cc: str = None) -> str:
     """
     Build a RFC 2822 MIME message with both plain text and HTML parts.
     Returns base64url-encoded raw message string for Gmail API.
@@ -28,6 +28,8 @@ def build_mime_message(to: str, subject: str, body_text: str, from_email: str = 
     msg["Subject"] = subject
     if from_email:
         msg["From"] = from_email
+    if cc:
+        msg["Cc"] = cc
 
     # Plain text part
     msg.attach(MIMEText(body_text, "plain"))
@@ -46,14 +48,14 @@ def build_mime_message(to: str, subject: str, body_text: str, from_email: str = 
     return raw
 
 
-async def send_via_gmail(access_token: str, to: str, subject: str, body: str, from_email: str = None) -> dict:
+async def send_via_gmail(access_token: str, to: str, subject: str, body: str, from_email: str = None, cc: str = None) -> dict:
     """
     Send an email through Gmail API using an access_token.
-    
+
     Returns: Gmail API response dict (with 'id', 'threadId', 'labelIds')
     Raises: Exception with detail on failure
     """
-    raw_message = build_mime_message(to, subject, body, from_email)
+    raw_message = build_mime_message(to, subject, body, from_email, cc)
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(

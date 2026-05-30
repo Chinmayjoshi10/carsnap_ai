@@ -41,9 +41,7 @@ Extract EVERY piece of information and generate business intelligence. Return ON
   "industry_tags": [string],
   "business_summary": string or null,
   "notes": string or null,
-  "confidence": float,
-  "email_subject": string,
-  "email_draft": string
+  "confidence": float
 }
 
 Field rules:
@@ -62,23 +60,30 @@ Field rules:
 - notes: Any other notable info on the card (tagline, certifications, branch names, GST number, awards, QR code mentions, etc.) — combine into one string, or null
 - confidence: How confident are you in the extraction? 0.0 to 1.0. High (0.8+) = clear card, most fields found. Medium (0.5-0.8) = some fields unclear. Low (<0.5) = very poor quality or mostly unreadable
 
-Email rules — THIS IS CRITICAL, write it like a REAL HUMAN, not an AI:
-- email_subject: A short, natural subject line like a real person would write. Examples:
-  * "Great meeting you at the conference!"
-  * "Nice connecting today, [first name]"
-  * "Following up — [first name] from [your context]"
-  Do NOT write generic subjects like "Professional Follow-up" or "Networking Connection"
-
-- email_draft: A warm, natural follow-up email. Rules:
-  * Start with "Hey [first name]," or "Hi [first name]!" — casual and warm
-  * 3-5 sentences, conversational tone
-  * Mention you just met and swapped cards
-  * Reference something specific about their role/company if you can infer it from the card data
-  * Keep it SHORT
-  * DO NOT sound corporate or stiff
-  * End with something simple like "Let's grab coffee sometime!" or "Would love to stay in touch."
-  * Sign off with a natural closing of your choice (e.g., "Warm regards,", "Cheers,", "Best regards,") followed by:\\n[Your Name]
-  * Use [Your Name] as a placeholder — nothing else after it
+# ----------------------------------------------------------------------------
+# NOTE: AI email generation is DISABLED per client request — the follow-up
+# email is now a fixed hardcoded template (see HARDCODED_EMAIL below). The
+# original "write it like a REAL HUMAN" email_subject / email_draft rules are
+# preserved here, commented out, so they can be re-enabled later if needed.
+#
+# Email rules — THIS IS CRITICAL, write it like a REAL HUMAN, not an AI:
+# - email_subject: A short, natural subject line like a real person would write. Examples:
+#   * "Great meeting you at the conference!"
+#   * "Nice connecting today, [first name]"
+#   * "Following up — [first name] from [your context]"
+#   Do NOT write generic subjects like "Professional Follow-up" or "Networking Connection"
+#
+# - email_draft: A warm, natural follow-up email. Rules:
+#   * Start with "Hey [first name]," or "Hi [first name]!" — casual and warm
+#   * 3-5 sentences, conversational tone
+#   * Mention you just met and swapped cards
+#   * Reference something specific about their role/company if you can infer it from the card data
+#   * Keep it SHORT
+#   * DO NOT sound corporate or stiff
+#   * End with something simple like "Let's grab coffee sometime!" or "Would love to stay in touch."
+#   * Sign off with a natural closing of your choice followed by:\\n[Your Name]
+#   * Use [Your Name] as a placeholder — nothing else after it
+# ----------------------------------------------------------------------------
 
 If text comes from both sides of the card, MERGE all information intelligently:
 - Deduplicate phone numbers and emails that appear on both sides
@@ -88,6 +93,44 @@ If text comes from both sides of the card, MERGE all information intelligently:
 
 OCR Text:
 """
+
+# ============================================================
+# Hardcoded follow-up email (client request)
+# ------------------------------------------------------------
+# AI-generated drafts are disabled for now. Every contact gets this fixed
+# template. {first_name} is filled from the extracted name; [Your Name] stays
+# a placeholder that the frontend swaps for the signed-in sender's name.
+# ============================================================
+HARDCODED_EMAIL_SUBJECT = "Great connecting with you"
+
+HARDCODED_EMAIL_TEMPLATE = """Hi {first_name},
+
+Thanks for connecting.
+
+I know how challenging it can be to run and grow a small business while juggling day-to-day operations.
+
+At Akika Tech, we help business owners save time, reduce manual work, and use technology and AI to operate more efficiently and serve customers better.
+
+Sometimes a few simple automations or process improvements can free up hours every week and create opportunities for growth.
+
+If you're interested, I'd love to learn more about your business and share a few ideas that could make an immediate impact.
+
+Looking forward to connecting.
+
+Best regards,
+
+[Your Name]"""
+
+
+def build_hardcoded_email(full_name) -> dict:
+    """Return the fixed follow-up email, with the recipient's first name filled in."""
+    first_name = (full_name or "").strip().split(" ")[0] if full_name else ""
+    greeting_name = first_name if first_name else "there"
+    return {
+        "email_subject": HARDCODED_EMAIL_SUBJECT,
+        "email_draft": HARDCODED_EMAIL_TEMPLATE.format(first_name=greeting_name),
+    }
+
 
 # ============================================================
 # Google Gemini Pro implementation (active) — using google-genai SDK
@@ -121,6 +164,9 @@ async def extract_contact_from_text(raw_text: str) -> dict:
         result["confidence"] = float(result.get("confidence", 0.5))
     except (ValueError, TypeError):
         result["confidence"] = 0.5
+
+    # Email is hardcoded for now (client request) — override any model output
+    result.update(build_hardcoded_email(result.get("full_name")))
 
     return result
 
