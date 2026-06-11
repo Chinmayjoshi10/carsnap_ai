@@ -111,11 +111,15 @@ I know how challenging it can be to run and grow a small business while juggling
 
 At Akika Tech, we help business owners save time, reduce manual work, and use technology and AI to operate more efficiently and serve customers better.
 
+https://calendly.com/contact-akikatech
+
 Sometimes a few simple automations or process improvements can free up hours every week and create opportunities for growth.
 
 If you're interested, I'd love to learn more about your business and share a few ideas that could make an immediate impact.
 
 Looking forward to connecting.
+
+https://calendly.com/contact-akikatech
 
 Best regards,
 
