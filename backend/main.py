@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routes.extract import router as extract_router
 from routes.send_email import router as email_router
 from routes.auth import router as auth_router
+from routes.batch import router as batch_router
 from services.firebase import db, save_contact, get_all_contacts, update_contact
 from models import SaveContactRequest
 from dotenv import load_dotenv
@@ -22,6 +23,7 @@ app.add_middleware(
 app.include_router(extract_router)
 app.include_router(email_router)
 app.include_router(auth_router)
+app.include_router(batch_router)
 
 @app.post("/save-contact")
 async def save(contact: SaveContactRequest):

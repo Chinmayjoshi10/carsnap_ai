@@ -6,7 +6,7 @@ import EmailEditor from '../components/EmailEditor'
 import StatusBanner from '../components/StatusBanner'
 import GmailConnect from '../components/GmailConnect'
 import ProcessingOverlay from '../components/scanner/ProcessingOverlay'
-import { extractCard, sendEmail, saveContact, updateContact } from '../lib/api'
+import { extractCard, sendEmail, saveContact, updateContact, batchSend } from '../lib/api'
 
 const emptyContact = {
   full_name: '', job_title: '', company: '',
@@ -41,6 +41,13 @@ export default function Capture() {
   const [processingStep, setProcessingStep] = useState(null)
   const [processingError, setProcessingError] = useState(null)
   const [processingHasBack, setProcessingHasBack] = useState(false)
+
+  // ── Batch upload state ──
+  const [batchFiles, setBatchFiles] = useState([])
+  const [batchProcessing, setBatchProcessing] = useState(false)
+  const [batchProgress, setBatchProgress] = useState(null)
+  const [batchResults, setBatchResults] = useState(null)
+  const batchInputRef = useRef(null)
 
   // Dynamically update placeholder if user signs in after extraction
   useEffect(() => {
@@ -194,6 +201,73 @@ export default function Capture() {
     setStatus(null); setExtracted(false); setSavedId(null)
   }
 
+  // ── Batch upload handlers ──
+  const handleBatchFileSelect = (e) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    const imageFiles = files.filter(f => f.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+
+    // Read all files to base64
+    const promises = imageFiles.map(file => new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve({ name: file.name, data: reader.result })
+      reader.readAsDataURL(file)
+    }))
+
+    Promise.all(promises).then(results => {
+      setBatchFiles(prev => [...prev, ...results])
+      setBatchResults(null)
+    })
+
+    // Reset the input so the same files can be re-selected
+    if (batchInputRef.current) batchInputRef.current.value = ''
+  }
+
+  const removeBatchFile = (index) => {
+    setBatchFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleBatchSend = async () => {
+    if (!user || !gmailConnected) {
+      setStatus({ type: 'error', message: 'Connect Gmail first to send emails' })
+      return
+    }
+    if (batchFiles.length === 0) return
+
+    setBatchProcessing(true)
+    setBatchProgress(`Processing ${batchFiles.length} card${batchFiles.length > 1 ? 's' : ''}...`)
+    setBatchResults(null)
+
+    try {
+      const cards = batchFiles.map(f => ({ front_image: f.data, back_image: null }))
+      const result = await batchSend(cards, user.uid)
+
+      setBatchResults(result)
+      setBatchProgress(null)
+      setBatchFiles([])
+    } catch (err) {
+      const detail = err.message || ''
+      if (detail.includes('gmail_reconnect_required') || detail.includes('gmail_not_connected')) {
+        setGmailConnected(false)
+        setBatchProgress(null)
+        setStatus({ type: 'error', message: 'Gmail disconnected. Please reconnect your Gmail.' })
+      } else {
+        setBatchProgress(null)
+        setStatus({ type: 'error', message: detail || 'Batch processing failed. Try again.' })
+      }
+    } finally {
+      setBatchProcessing(false)
+    }
+  }
+
+  const clearBatch = () => {
+    setBatchFiles([])
+    setBatchResults(null)
+    setBatchProgress(null)
+  }
+
   return (
     <div className="flex flex-col gap-5 px-4 pt-6 pb-10 page-enter">
 
@@ -229,6 +303,209 @@ export default function Capture() {
 
       {/* Status */}
       {status && <StatusBanner status={status.type} message={status.message} />}
+
+      {/* ══════════ BATCH UPLOAD SECTION ══════════ */}
+      {!extracted && !frontImage && (
+        <div className="mt-2">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-0.5 h-4 rounded-full" style={{ background: '#8B5CF6' }} />
+            <span className="text-xs font-semibold text-tx-secondary uppercase tracking-wider">Batch Upload &amp; Send</span>
+          </div>
+
+          <div
+            className="rounded-2xl overflow-hidden bg-surface"
+            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04)' }}
+          >
+            {/* Header */}
+            <div
+              className="px-4 py-3 flex items-center justify-between"
+              style={{ borderBottom: '1px solid #F3F2EF' }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">📦</span>
+                <span className="text-xs font-medium text-tx-muted uppercase tracking-wider">
+                  Multiple Cards
+                </span>
+              </div>
+              {batchFiles.length > 0 && (
+                <span className="text-xs font-medium tabular-nums" style={{ color: '#8B5CF6' }}>
+                  {batchFiles.length} card{batchFiles.length > 1 ? 's' : ''} selected
+                </span>
+              )}
+            </div>
+
+            <div className="p-4">
+              {/* Description */}
+              <p className="text-xs text-tx-muted mb-3 leading-relaxed">
+                Upload multiple business card images at once. Each card will be processed, a contact saved, and a follow-up email sent automatically.
+              </p>
+
+              {/* File picker */}
+              <label
+                className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed py-4 cursor-pointer transition-colors hover:border-purple-300 hover:bg-purple-50/30"
+                style={{ borderColor: batchFiles.length > 0 ? '#8B5CF6' : '#E5E7EB' }}
+              >
+                <input
+                  ref={batchInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleBatchFileSelect}
+                />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="#8B5CF6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <polyline points="17 8 12 3 7 8" stroke="#8B5CF6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="12" y1="3" x2="12" y2="15" stroke="#8B5CF6" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+                <span className="text-sm font-medium" style={{ color: '#8B5CF6' }}>
+                  {batchFiles.length > 0 ? 'Add more cards' : 'Select card images'}
+                </span>
+              </label>
+
+              {/* Selected files preview */}
+              {batchFiles.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {batchFiles.map((file, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2"
+                      style={{ background: '#FAFAF9' }}
+                    >
+                      <img
+                        src={file.data}
+                        alt={file.name}
+                        className="w-10 h-10 rounded-lg object-cover"
+                        style={{ border: '1px solid #E8E5E0' }}
+                      />
+                      <span className="flex-1 text-xs text-tx-secondary truncate">
+                        {file.name}
+                      </span>
+                      <button
+                        onClick={() => removeBatchFile(i)}
+                        className="text-tx-muted hover:text-red-500 transition-colors p-1"
+                        title="Remove"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                          <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                          <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Batch send button */}
+              {batchFiles.length > 0 && (
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={handleBatchSend}
+                    disabled={batchProcessing || !user || !gmailConnected}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-xl font-medium text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                      height: '44px',
+                      background: user && gmailConnected ? '#8B5CF6' : '#6B7280',
+                      color: '#fff',
+                    }}
+                  >
+                    {batchProcessing ? (
+                      <>
+                        <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🚀</span>
+                        <span>
+                          {!user ? 'Sign in first' : !gmailConnected ? 'Connect Gmail' : `Extract & Send (${batchFiles.length})`}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={clearBatch}
+                    disabled={batchProcessing}
+                    className="rounded-xl px-4 text-sm font-medium transition-all active:scale-95 disabled:opacity-40"
+                    style={{
+                      height: '44px',
+                      background: '#fff',
+                      color: '#6B7280',
+                      border: '1.5px solid #E8E5E0',
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              {/* Batch progress */}
+              {batchProgress && (
+                <div
+                  className="mt-3 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2"
+                  style={{ background: '#EDE9FE', color: '#6D28D9' }}
+                >
+                  <div className="w-4 h-4 rounded-full border-2 border-purple-200 border-t-purple-600 animate-spin" />
+                  {batchProgress}
+                </div>
+              )}
+
+              {/* Batch results */}
+              {batchResults && (
+                <div className="mt-3 space-y-2">
+                  <div
+                    className="px-4 py-3 rounded-xl text-sm font-medium"
+                    style={{
+                      background: batchResults.failed > 0 ? '#FEF3C7' : '#F0FDF4',
+                      color: batchResults.failed > 0 ? '#92400E' : '#166534',
+                    }}
+                  >
+                    ✓ Processed {batchResults.total} card{batchResults.total > 1 ? 's' : ''} —
+                    {' '}{batchResults.sent} email{batchResults.sent !== 1 ? 's' : ''} sent
+                    {batchResults.skipped > 0 && `, ${batchResults.skipped} skipped`}
+                    {batchResults.failed > 0 && `, ${batchResults.failed} failed`}
+                  </div>
+
+                  {/* Per-card details */}
+                  {batchResults.results?.map((r, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2 text-xs"
+                      style={{ background: '#FAFAF9' }}
+                    >
+                      <span style={{
+                        color: r.status === 'sent' ? '#16A34A'
+                             : r.status === 'no_email' || r.status === 'skipped' ? '#D97706'
+                             : '#DC2626'
+                      }}>
+                        {r.status === 'sent' ? '✓' : r.status === 'no_email' || r.status === 'skipped' ? '⚠' : '✗'}
+                      </span>
+                      <span className="flex-1 text-tx-secondary truncate">
+                        {r.full_name || `Card ${i + 1}`}
+                        {r.email ? ` → ${r.email}` : ''}
+                      </span>
+                      <span className="text-tx-muted capitalize">
+                        {r.status === 'sent' ? 'Sent'
+                          : r.status === 'no_email' ? 'No email'
+                          : r.status === 'skipped' ? 'Skipped'
+                          : r.status === 'email_failed' ? 'Send failed'
+                          : 'Error'}
+                      </span>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={clearBatch}
+                    className="w-full text-center text-xs text-tx-muted py-1 hover:text-tx-secondary transition-colors"
+                  >
+                    Clear results
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Gmail connect — required to send */}
       <div className="mt-4">

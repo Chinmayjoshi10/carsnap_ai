@@ -107,3 +107,14 @@ export async function getGmailStatus(uid) {
   const body = await readJsonSafe(res)
   return body || { gmail_connected: false }
 }
+
+// ─── Batch processing ───
+
+export async function batchSend(cards, uid) {
+  const res = await fetch(`${BASE}/batch-send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cards, uid })
+  })
+  return unwrap(res, 'Batch processing failed')
+}
