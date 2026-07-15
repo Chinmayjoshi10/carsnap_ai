@@ -101,29 +101,35 @@ OCR Text:
 # template. {first_name} is filled from the extracted name; [Your Name] stays
 # a placeholder that the frontend swaps for the signed-in sender's name.
 # ============================================================
-HARDCODED_EMAIL_SUBJECT = "Great connecting with you"
+HARDCODED_EMAIL_SUBJECT = "Business Perspective Project | Seeking Your Perspective"
 
 HARDCODED_EMAIL_TEMPLATE = """Hi {first_name},
 
-Thanks for connecting.
+I hope you're doing well.
 
-I know how challenging it can be to run and grow a small business while juggling day-to-day operations.
+We met through a Loudoun Chamber event, and I've been meaning to reach out.
 
-At Akika Tech, we help business owners save time, reduce manual work, and use technology and AI to operate more efficiently and serve customers better.
+I'd love to borrow 30 minutes of your time for a virtual conversation to hear your perspective on your business today — what's working, what's challenging, and how you're thinking about the future.
 
-https://calendly.com/contact-akikatech
+Lately, I've been wondering whether there are common challenges that most business owners face, whether my own perceptions are grounded in reality or simply assumptions, and how emerging technologies like AI are influencing the way businesses operate. Rather than speculate, I've decided to learn directly from business owners themselves.
 
-Sometimes a few simple automations or process improvements can free up hours every week and create opportunities for growth.
+My goal is to speak with 50 business owners over the next couple of months across a variety of industries.
 
-If you're interested, I'd love to learn more about your business and share a few ideas that could make an immediate impact.
+To be completely transparent, there's no hidden agenda behind these conversations. This isn't a sales call, a coaching session, or research on behalf of another organization. My goal is simply to become a better student of the Loudoun business community by listening to the people who are building it every day.
 
-Looking forward to connecting.
+Would you be willing to be one of the people I learn from? I'd really value your perspective.
 
-https://calendly.com/contact-akikatech
+If you are willing, please feel free to book a slot at the link below:
 
-Best regards,
+https://calendly.com/connect-sscoach/30min
 
-[Your Name]"""
+Thank you,
+
+Arushi
+
+Founder | SoulSynergy-Coach
+ICF Professional Certified Coach (PCC)
+connect.sscoach@gmail.com"""
 
 
 def build_hardcoded_email(full_name) -> dict:
