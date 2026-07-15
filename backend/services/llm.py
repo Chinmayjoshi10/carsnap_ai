@@ -145,12 +145,23 @@ def build_hardcoded_email(full_name) -> dict:
 # ============================================================
 # Google Gemini Pro implementation (active) — using google-genai SDK
 # ============================================================
-async def extract_contact_from_text(raw_text: str) -> dict:
-    """Use Gemini Pro to extract full business intelligence from OCR text."""
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+_gemini_client = None
+
+def _get_client():
+    """Reuse a single genai client instance."""
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return _gemini_client
+
+
+def _extract_sync(raw_text: str, model: str = None) -> dict:
+    """Synchronous extraction — called via asyncio.to_thread."""
+    client = _get_client()
+    use_model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
 
     response = client.models.generate_content(
-        model=os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),
+        model=use_model,
         contents=EXTRACT_PROMPT + raw_text,
         config=types.GenerateContentConfig(
             max_output_tokens=2000,
@@ -159,9 +170,7 @@ async def extract_contact_from_text(raw_text: str) -> dict:
     )
 
     text = response.text.strip()
-    # Strip markdown fences if model adds them
     text = text.replace("```json", "").replace("```", "").strip()
-
     result = json.loads(text)
 
     # Ensure array fields are actually arrays
@@ -175,10 +184,23 @@ async def extract_contact_from_text(raw_text: str) -> dict:
     except (ValueError, TypeError):
         result["confidence"] = 0.5
 
-    # Email is hardcoded for now (client request) — override any model output
+    # Email is hardcoded for now (client request)
     result.update(build_hardcoded_email(result.get("full_name")))
 
     return result
+
+
+async def extract_contact_from_text(raw_text: str) -> dict:
+    """Use Gemini Pro to extract full business intelligence from OCR text."""
+    import asyncio
+    return await asyncio.to_thread(_extract_sync, raw_text)
+
+
+async def extract_contact_fast(raw_text: str) -> dict:
+    """Fast extraction using Gemini 2.0 Flash — for batch processing."""
+    import asyncio
+    return await asyncio.to_thread(_extract_sync, raw_text, "gemini-2.0-flash")
+
 
 # ============================================================
 # AWS Bedrock implementation (commented out)

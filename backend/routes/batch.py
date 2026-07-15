@@ -18,8 +18,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from services.ocr import extract_dual_side
-from services.llm import extract_contact_from_text
-from services.storage import upload_card_image
+from services.llm import extract_contact_fast
 from services.google_oauth import refresh_access_token
 from services.gmail_sender import send_via_gmail, TokenExpiredError
 from services.firebase import db, save_contact
@@ -54,7 +53,7 @@ async def _process_single_card(
     token_lock: asyncio.Lock,
     token_holder: dict,
 ) -> dict:
-    """Process one card: OCR → extract → upload → email → save. Runs under semaphore."""
+    """Process one card: OCR → extract → email → save. Runs under semaphore."""
 
     card_result = {
         "index": index,
@@ -75,28 +74,14 @@ async def _process_single_card(
                 card_result["error"] = "Could not read text from image"
                 return card_result
 
-            # Step 2: LLM extraction
-            contact = await extract_contact_from_text(combined_text)
+            # Step 2: LLM extraction (Gemini Flash for speed)
+            contact = await extract_contact_fast(combined_text)
 
             card_result["full_name"] = contact.get("full_name")
             primary_email = (contact.get("emails") or [None])[0]
             card_result["email"] = primary_email
 
-            # Step 3: Upload image (best effort, sync — runs in thread pool)
-            front_url = ""
-            try:
-                front_url = await asyncio.to_thread(upload_card_image, card.front_image, "front")
-            except Exception:
-                pass
-
-            back_url = ""
-            if card.back_image:
-                try:
-                    back_url = await asyncio.to_thread(upload_card_image, card.back_image, "back")
-                except Exception:
-                    pass
-
-            # Step 4: Send email if valid address
+            # Step 3: Send email if valid address (skip image upload for speed)
             email_sent = False
             if primary_email and EMAIL_REGEX.match(primary_email):
                 subject = contact.get("email_subject", "Great connecting with you")
@@ -139,12 +124,12 @@ async def _process_single_card(
             else:
                 card_result["status"] = "no_email"
 
-            # Step 5: Save contact to Firestore
+            # Step 4: Save contact to Firestore
             save_data = {
                 **contact,
                 "raw_card_text": combined_text,
-                "front_image_url": front_url,
-                "back_image_url": back_url,
+                "front_image_url": "",
+                "back_image_url": "",
                 "email_sent": email_sent,
                 "saved_by": uid,
             }
