@@ -76,14 +76,15 @@ async def send_email(request: SendEmailRequest):
             detail="gmail_reconnect_required: Gmail access has been revoked. Please reconnect your Gmail account."
         )
 
-    # Always CC the sender's own address so they keep a copy of every email
+    # BCC the sender so they keep a copy without exposing it in headers
+    # (CC-to-self on cold outreach confuses spam filters)
     sender_email = user_data.get("email")
 
     # Send via Gmail API
     try:
         result = await send_via_gmail(
             access_token, request.to, request.subject, request.body,
-            sender_email, cc=sender_email
+            sender_email, bcc=sender_email
         )
         return {
             "success": True,
@@ -98,7 +99,7 @@ async def send_email(request: SendEmailRequest):
             access_token = token_data["access_token"]
             result = await send_via_gmail(
                 access_token, request.to, request.subject, request.body,
-                sender_email, cc=sender_email
+                sender_email, bcc=sender_email
             )
             return {
                 "success": True,

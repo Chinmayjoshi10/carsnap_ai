@@ -95,7 +95,7 @@ async def _process_single_card(
                     current_token = token_holder["access_token"]
                     await send_via_gmail(
                         current_token, primary_email, subject, body,
-                        sender_email, cc=sender_email
+                        sender_email, bcc=sender_email
                     )
                     email_sent = True
                     card_result["status"] = "sent"
@@ -111,7 +111,7 @@ async def _process_single_card(
                     try:
                         await send_via_gmail(
                             token_holder["access_token"], primary_email, subject, body,
-                            sender_email, cc=sender_email
+                            sender_email, bcc=sender_email
                         )
                         email_sent = True
                         card_result["status"] = "sent"
