@@ -41,7 +41,9 @@ Extract EVERY piece of information and generate business intelligence. Return ON
   "industry_tags": [string],
   "business_summary": string or null,
   "notes": string or null,
-  "confidence": float
+  "confidence": float,
+  "email_subject": string,
+  "email_draft": string
 }
 
 Field rules:
@@ -60,30 +62,31 @@ Field rules:
 - notes: Any other notable info on the card (tagline, certifications, branch names, GST number, awards, QR code mentions, etc.) — combine into one string, or null
 - confidence: How confident are you in the extraction? 0.0 to 1.0. High (0.8+) = clear card, most fields found. Medium (0.5-0.8) = some fields unclear. Low (<0.5) = very poor quality or mostly unreadable
 
-# ----------------------------------------------------------------------------
-# NOTE: AI email generation is DISABLED per client request — the follow-up
-# email is now a fixed hardcoded template (see HARDCODED_EMAIL below). The
-# original "write it like a REAL HUMAN" email_subject / email_draft rules are
-# preserved here, commented out, so they can be re-enabled later if needed.
-#
-# Email rules — THIS IS CRITICAL, write it like a REAL HUMAN, not an AI:
-# - email_subject: A short, natural subject line like a real person would write. Examples:
-#   * "Great meeting you at the conference!"
-#   * "Nice connecting today, [first name]"
-#   * "Following up — [first name] from [your context]"
-#   Do NOT write generic subjects like "Professional Follow-up" or "Networking Connection"
-#
-# - email_draft: A warm, natural follow-up email. Rules:
-#   * Start with "Hey [first name]," or "Hi [first name]!" — casual and warm
-#   * 3-5 sentences, conversational tone
-#   * Mention you just met and swapped cards
-#   * Reference something specific about their role/company if you can infer it from the card data
-#   * Keep it SHORT
-#   * DO NOT sound corporate or stiff
-#   * End with something simple like "Let's grab coffee sometime!" or "Would love to stay in touch."
-#   * Sign off with a natural closing of your choice followed by:\\n[Your Name]
-#   * Use [Your Name] as a placeholder — nothing else after it
-# ----------------------------------------------------------------------------
+Email rules — THIS IS CRITICAL. Write like a REAL HUMAN, not an AI. Each email MUST be unique and personalized:
+
+- email_subject: A short, casual subject line like a real person would type. MUST reference something specific from the card (their name, company, or role). Examples:
+  * "Great meeting you at the chamber event!"
+  * "Nice connecting today, [first name]"
+  * "Hey [first name] — loved hearing about [company]"
+  NEVER write generic subjects like "Professional Follow-up" or "Networking Connection" or "Business Perspective Project"
+
+- email_draft: A warm, personalized follow-up email. STRICT rules:
+  * Start with "Hi [first name]," or "Hey [first name]!" — casual and warm
+  * 3-5 sentences MAXIMUM. Short emails don't trigger spam filters, long ones do.
+  * Reference something SPECIFIC about their role, company, or industry from the card data — this makes every email unique
+  * Mention you recently met and exchanged cards at a Loudoun Chamber event
+  * Express genuine interest in their work based on what's on the card
+  * End with a simple call to action like "Would love to grab coffee and hear more about [specific thing]!" or "Let's stay in touch — would be great to chat sometime."
+  * Sign off with a natural closing followed by:\n[Your Name]
+  * Use [Your Name] as the sender placeholder — the app will replace it
+
+  ANTI-SPAM RULES (follow these strictly):
+  * NEVER include any URLs or links (no calendly, no websites, no booking links)
+  * NEVER say "no hidden agenda", "this isn't a sales call", or similar disclaimers — these are top spam trigger phrases
+  * NEVER use phrases like "I hope this email finds you well" or "I hope you're doing well" — spam filter red flags
+  * NEVER mention sending to multiple people or "50 business owners" — bulk language = spam
+  * Keep under 100 words total. Shorter = safer.
+  * Sound like a real person texting a new acquaintance, NOT a marketing email
 
 If text comes from both sides of the card, MERGE all information intelligently:
 - Deduplicate phone numbers and emails that appear on both sides
@@ -95,51 +98,52 @@ OCR Text:
 """
 
 # ============================================================
-# Hardcoded follow-up email (client request)
+# Hardcoded follow-up email (DISABLED — AI generation re-enabled)
 # ------------------------------------------------------------
-# AI-generated drafts are disabled for now. Every contact gets this fixed
-# template. {first_name} is filled from the extracted name; [Your Name] stays
-# a placeholder that the frontend swaps for the signed-in sender's name.
+# Kept as fallback. To revert to hardcoded emails:
+# 1. Uncomment build_hardcoded_email()
+# 2. Add result.update(build_hardcoded_email(...)) back in _extract_sync
+# 3. Remove email_subject/email_draft from the EXTRACT_PROMPT JSON schema
 # ============================================================
-HARDCODED_EMAIL_SUBJECT = "Business Perspective Project | Seeking Your Perspective"
-
-HARDCODED_EMAIL_TEMPLATE = """Hi {first_name},
-
-I hope you're doing well.
-
-We met through a Loudoun Chamber event, and I've been meaning to reach out.
-
-I'd love to borrow 30 minutes of your time for a virtual conversation to hear your perspective on your business today — what's working, what's challenging, and how you're thinking about the future.
-
-Lately, I've been wondering whether there are common challenges that most business owners face, whether my own perceptions are grounded in reality or simply assumptions, and how emerging technologies like AI are influencing the way businesses operate. Rather than speculate, I've decided to learn directly from business owners themselves.
-
-My goal is to speak with 50 business owners over the next couple of months across a variety of industries.
-
-To be completely transparent, there's no hidden agenda behind these conversations. This isn't a sales call, a coaching session, or research on behalf of another organization. My goal is simply to become a better student of the Loudoun business community by listening to the people who are building it every day.
-
-Would you be willing to be one of the people I learn from? I'd really value your perspective.
-
-If you are willing, please feel free to book a slot at the link below:
-
-https://calendly.com/connect-sscoach/30min
-
-Thank you,
-
-Arushi
-
-Founder | SoulSynergy-Coach
-ICF Professional Certified Coach (PCC)
-connect.sscoach@gmail.com"""
-
-
-def build_hardcoded_email(full_name) -> dict:
-    """Return the fixed follow-up email, with the recipient's first name filled in."""
-    first_name = (full_name or "").strip().split(" ")[0] if full_name else ""
-    greeting_name = first_name if first_name else "there"
-    return {
-        "email_subject": HARDCODED_EMAIL_SUBJECT,
-        "email_draft": HARDCODED_EMAIL_TEMPLATE.format(first_name=greeting_name),
-    }
+# HARDCODED_EMAIL_SUBJECT = "Business Perspective Project | Seeking Your Perspective"
+#
+# HARDCODED_EMAIL_TEMPLATE = """Hi {first_name},
+#
+# I hope you're doing well.
+#
+# We met through a Loudoun Chamber event, and I've been meaning to reach out.
+#
+# I'd love to borrow 30 minutes of your time for a virtual conversation to hear your perspective on your business today — what's working, what's challenging, and how you're thinking about the future.
+#
+# Lately, I've been wondering whether there are common challenges that most business owners face, whether my own perceptions are grounded in reality or simply assumptions, and how emerging technologies like AI are influencing the way businesses operate. Rather than speculate, I've decided to learn directly from business owners themselves.
+#
+# My goal is to speak with 50 business owners over the next couple of months across a variety of industries.
+#
+# To be completely transparent, there's no hidden agenda behind these conversations. This isn't a sales call, a coaching session, or research on behalf of another organization. My goal is simply to become a better student of the Loudoun business community by listening to the people who are building it every day.
+#
+# Would you be willing to be one of the people I learn from? I'd really value your perspective.
+#
+# If you are willing, please feel free to book a slot at the link below:
+#
+# https://calendly.com/connect-sscoach/30min
+#
+# Thank you,
+#
+# Arushi
+#
+# Founder | SoulSynergy-Coach
+# ICF Professional Certified Coach (PCC)
+# connect.sscoach@gmail.com"""
+#
+#
+# def build_hardcoded_email(full_name) -> dict:
+#     """Return the fixed follow-up email, with the recipient's first name filled in."""
+#     first_name = (full_name or "").strip().split(" ")[0] if full_name else ""
+#     greeting_name = first_name if first_name else "there"
+#     return {
+#         "email_subject": HARDCODED_EMAIL_SUBJECT,
+#         "email_draft": HARDCODED_EMAIL_TEMPLATE.format(first_name=greeting_name),
+#     }
 
 
 # ============================================================
@@ -165,7 +169,7 @@ def _extract_sync(raw_text: str, model: str = None) -> dict:
         contents=EXTRACT_PROMPT + raw_text,
         config=types.GenerateContentConfig(
             max_output_tokens=2000,
-            temperature=0.2,
+            temperature=0.7,
         ),
     )
 
@@ -184,8 +188,18 @@ def _extract_sync(raw_text: str, model: str = None) -> dict:
     except (ValueError, TypeError):
         result["confidence"] = 0.5
 
-    # Email is hardcoded for now (client request)
-    result.update(build_hardcoded_email(result.get("full_name")))
+    # Ensure email fields exist (AI should generate them, but fallback just in case)
+    if not result.get("email_subject"):
+        first = (result.get("full_name") or "").split(" ")[0] or "there"
+        result["email_subject"] = f"Great connecting, {first}!"
+    if not result.get("email_draft"):
+        first = (result.get("full_name") or "").split(" ")[0] or "there"
+        result["email_draft"] = (
+            f"Hey {first},\n\n"
+            f"Really enjoyed meeting you at the chamber event! "
+            f"Would love to stay in touch and hear more about what you're working on.\n\n"
+            f"Cheers,\n[Your Name]"
+        )
 
     return result
 
