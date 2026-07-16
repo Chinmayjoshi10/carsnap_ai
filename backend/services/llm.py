@@ -62,31 +62,42 @@ Field rules:
 - notes: Any other notable info on the card (tagline, certifications, branch names, GST number, awards, QR code mentions, etc.) — combine into one string, or null
 - confidence: How confident are you in the extraction? 0.0 to 1.0. High (0.8+) = clear card, most fields found. Medium (0.5-0.8) = some fields unclear. Low (<0.5) = very poor quality or mostly unreadable
 
-Email rules — THIS IS CRITICAL. Write like a REAL HUMAN, not an AI. Each email MUST be unique and personalized:
+Email rules — THIS IS CRITICAL. You must generate email_subject and email_draft for EVERY contact.
 
-- email_subject: A short, casual subject line like a real person would type. MUST reference something specific from the card (their name, company, or role). Examples:
-  * "Great meeting you at the chamber event!"
-  * "Nice connecting today, [first name]"
-  * "Hey [first name] — loved hearing about [company]"
-  NEVER write generic subjects like "Professional Follow-up" or "Networking Connection" or "Business Perspective Project"
+- email_subject: Use this EXACT subject line, but you may make TINY variations (swap one or two words) to keep it slightly unique each time:
+  Base: "Great meeting you at the Loudoun Chamber"
+  Allowed variations: "Great connecting at the Loudoun Chamber", "Wonderful meeting you through the Loudoun Chamber", "Nice meeting you at the Loudoun Chamber"
+  NEVER change the core meaning. NEVER use generic subjects like "Professional Follow-up" or "Business Perspective Project".
 
-- email_draft: A warm, personalized follow-up email. STRICT rules:
-  * Start with "Hi [first name]," or "Hey [first name]!" — casual and warm
-  * 3-5 sentences MAXIMUM. Short emails don't trigger spam filters, long ones do.
-  * Reference something SPECIFIC about their role, company, or industry from the card data — this makes every email unique
-  * Mention you recently met and exchanged cards at a Loudoun Chamber event
-  * Express genuine interest in their work based on what's on the card
-  * End with a simple call to action like "Would love to grab coffee and hear more about [specific thing]!" or "Let's stay in touch — would be great to chat sometime."
-  * Sign off with a natural closing followed by:\n[Your Name]
-  * Use [Your Name] as the sender placeholder — the app will replace it
+- email_draft: Follow this EXACT template structure. You MUST keep the same message, same flow, same signature — but rephrase sentences slightly each time (swap synonyms, reorder clauses, vary one or two words) so no two emails are word-for-word identical. Replace [NAME] with the contact's first name from the card.
 
-  ANTI-SPAM RULES (follow these strictly):
-  * NEVER include any URLs or links (no calendly, no websites, no booking links)
-  * NEVER say "no hidden agenda", "this isn't a sales call", or similar disclaimers — these are top spam trigger phrases
-  * NEVER use phrases like "I hope this email finds you well" or "I hope you're doing well" — spam filter red flags
-  * NEVER mention sending to multiple people or "50 business owners" — bulk language = spam
-  * Keep under 100 words total. Shorter = safer.
-  * Sound like a real person texting a new acquaintance, NOT a marketing email
+  REFERENCE TEMPLATE (follow this closely):
+  ---
+  Hi [NAME],
+
+  It was great meeting you through the Loudoun Chamber. I've been meaning to reach out.
+
+  Through my coaching work, I have the opportunity to speak with professionals, leaders, and business owners. Over time, I found myself wondering whether the challenges I hear are unique to each business or common across many.
+
+  That curiosity led me to start the Business Perspectives Project — a series of conversations with local business owners to better understand the realities of running a business today.
+
+  If you're open to a 30-minute virtual conversation, I'd genuinely enjoy learning from your experience. Just reply to this email, and I'll send over a few times that work.
+
+  Best,
+
+  Arushi Bhardwaj
+  Founder | SoulSynergy-Coach
+  ICF Professional Certified Coach (PCC)
+  ---
+
+  VARIATION RULES:
+  * Keep the SAME structure, SAME paragraphs, SAME signature block — do NOT add or remove paragraphs
+  * Only make SMALL rephrasing changes — swap a few words or reorder a clause per paragraph
+  * Examples of allowed changes: "It was great meeting you" → "It was wonderful connecting with you", "I've been meaning to reach out" → "I've been wanting to connect"
+  * The signature block (Best, Arushi Bhardwaj, Founder | SoulSynergy-Coach, ICF Professional Certified Coach (PCC)) must appear EXACTLY as shown — never change it
+  * NEVER add URLs, links, or Calendly booking links
+  * NEVER add disclaimers like "no hidden agenda" or "this isn't a sales call"
+  * NEVER add "I hope you're doing well" or similar filler
 
 If text comes from both sides of the card, MERGE all information intelligently:
 - Deduplicate phone numbers and emails that appear on both sides
@@ -190,15 +201,23 @@ def _extract_sync(raw_text: str, model: str = None) -> dict:
 
     # Ensure email fields exist (AI should generate them, but fallback just in case)
     if not result.get("email_subject"):
-        first = (result.get("full_name") or "").split(" ")[0] or "there"
-        result["email_subject"] = f"Great connecting, {first}!"
+        result["email_subject"] = "Great meeting you at the Loudoun Chamber"
     if not result.get("email_draft"):
         first = (result.get("full_name") or "").split(" ")[0] or "there"
         result["email_draft"] = (
-            f"Hey {first},\n\n"
-            f"Really enjoyed meeting you at the chamber event! "
-            f"Would love to stay in touch and hear more about what you're working on.\n\n"
-            f"Cheers,\n[Your Name]"
+            f"Hi {first},\n\n"
+            f"It was great meeting you through the Loudoun Chamber. I've been meaning to reach out.\n\n"
+            f"Through my coaching work, I have the opportunity to speak with professionals, leaders, "
+            f"and business owners. Over time, I found myself wondering whether the challenges I hear "
+            f"are unique to each business or common across many.\n\n"
+            f"That curiosity led me to start the Business Perspectives Project \u2014 a series of conversations "
+            f"with local business owners to better understand the realities of running a business today.\n\n"
+            f"If you're open to a 30-minute virtual conversation, I'd genuinely enjoy learning from your "
+            f"experience. Just reply to this email, and I'll send over a few times that work.\n\n"
+            f"Best,\n\n"
+            f"Arushi Bhardwaj\n"
+            f"Founder | SoulSynergy-Coach\n"
+            f"ICF Professional Certified Coach (PCC)"
         )
 
     return result
