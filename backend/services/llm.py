@@ -41,9 +41,7 @@ Extract EVERY piece of information and generate business intelligence. Return ON
   "industry_tags": [string],
   "business_summary": string or null,
   "notes": string or null,
-  "confidence": float,
-  "email_subject": string,
-  "email_draft": string
+  "confidence": float
 }
 
 Field rules:
@@ -62,42 +60,6 @@ Field rules:
 - notes: Any other notable info on the card (tagline, certifications, branch names, GST number, awards, QR code mentions, etc.) — combine into one string, or null
 - confidence: How confident are you in the extraction? 0.0 to 1.0. High (0.8+) = clear card, most fields found. Medium (0.5-0.8) = some fields unclear. Low (<0.5) = very poor quality or mostly unreadable
 
-Email rules — THIS IS CRITICAL. You must generate email_subject and email_draft for EVERY contact.
-
-- email_subject: Use this EXACT subject line, but you may make TINY variations (swap one or two words) to keep it slightly unique each time:
-  Base: "Great meeting you at the Loudoun Chamber"
-  Allowed variations: "Great connecting at the Loudoun Chamber", "Wonderful meeting you through the Loudoun Chamber", "Nice meeting you at the Loudoun Chamber"
-  NEVER change the core meaning. NEVER use generic subjects like "Professional Follow-up" or "Business Perspective Project".
-
-- email_draft: Follow this EXACT template structure. You MUST keep the same message, same flow, same signature — but rephrase sentences slightly each time (swap synonyms, reorder clauses, vary one or two words) so no two emails are word-for-word identical. Replace [NAME] with the contact's first name from the card.
-
-  REFERENCE TEMPLATE (follow this closely):
-  ---
-  Hi [NAME],
-
-  It was great meeting you through the Loudoun Chamber. I've been meaning to reach out.
-
-  Through my coaching work, I have the opportunity to speak with professionals, leaders, and business owners. Over time, I found myself wondering whether the challenges I hear are unique to each business or common across many.
-
-  That curiosity led me to start the Business Perspectives Project — a series of conversations with local business owners to better understand the realities of running a business today.
-
-  If you're open to a 30-minute virtual conversation, I'd genuinely enjoy learning from your experience. Just reply to this email, and I'll send over a few times that work.
-
-  Best,
-
-  Arushi Bhardwaj
-  Founder | SoulSynergy-Coach
-  ICF Professional Certified Coach (PCC)
-  ---
-
-  VARIATION RULES:
-  * Keep the SAME structure, SAME paragraphs, SAME signature block — do NOT add or remove paragraphs
-  * Only make SMALL rephrasing changes — swap a few words or reorder a clause per paragraph
-  * Examples of allowed changes: "It was great meeting you" → "It was wonderful connecting with you", "I've been meaning to reach out" → "I've been wanting to connect"
-  * The signature block (Best, Arushi Bhardwaj, Founder | SoulSynergy-Coach, ICF Professional Certified Coach (PCC)) must appear EXACTLY as shown — never change it
-  * NEVER add URLs, links, or Calendly booking links
-  * NEVER add disclaimers like "no hidden agenda" or "this isn't a sales call"
-  * NEVER add "I hope you're doing well" or similar filler
 
 If text comes from both sides of the card, MERGE all information intelligently:
 - Deduplicate phone numbers and emails that appear on both sides
@@ -109,52 +71,36 @@ OCR Text:
 """
 
 # ============================================================
-# Hardcoded follow-up email (DISABLED — AI generation re-enabled)
-# ------------------------------------------------------------
-# Kept as fallback. To revert to hardcoded emails:
-# 1. Uncomment build_hardcoded_email()
-# 2. Add result.update(build_hardcoded_email(...)) back in _extract_sync
-# 3. Remove email_subject/email_draft from the EXTRACT_PROMPT JSON schema
+# Hardcoded follow-up email — exact approved template
+# Only the recipient's first name is swapped in. No LLM involvement.
 # ============================================================
-# HARDCODED_EMAIL_SUBJECT = "Business Perspective Project | Seeking Your Perspective"
-#
-# HARDCODED_EMAIL_TEMPLATE = """Hi {first_name},
-#
-# I hope you're doing well.
-#
-# We met through a Loudoun Chamber event, and I've been meaning to reach out.
-#
-# I'd love to borrow 30 minutes of your time for a virtual conversation to hear your perspective on your business today — what's working, what's challenging, and how you're thinking about the future.
-#
-# Lately, I've been wondering whether there are common challenges that most business owners face, whether my own perceptions are grounded in reality or simply assumptions, and how emerging technologies like AI are influencing the way businesses operate. Rather than speculate, I've decided to learn directly from business owners themselves.
-#
-# My goal is to speak with 50 business owners over the next couple of months across a variety of industries.
-#
-# To be completely transparent, there's no hidden agenda behind these conversations. This isn't a sales call, a coaching session, or research on behalf of another organization. My goal is simply to become a better student of the Loudoun business community by listening to the people who are building it every day.
-#
-# Would you be willing to be one of the people I learn from? I'd really value your perspective.
-#
-# If you are willing, please feel free to book a slot at the link below:
-#
-# https://calendly.com/connect-sscoach/30min
-#
-# Thank you,
-#
-# Arushi
-#
-# Founder | SoulSynergy-Coach
-# ICF Professional Certified Coach (PCC)
-# connect.sscoach@gmail.com"""
-#
-#
-# def build_hardcoded_email(full_name) -> dict:
-#     """Return the fixed follow-up email, with the recipient's first name filled in."""
-#     first_name = (full_name or "").strip().split(" ")[0] if full_name else ""
-#     greeting_name = first_name if first_name else "there"
-#     return {
-#         "email_subject": HARDCODED_EMAIL_SUBJECT,
-#         "email_draft": HARDCODED_EMAIL_TEMPLATE.format(first_name=greeting_name),
-#     }
+HARDCODED_EMAIL_SUBJECT = "Great meeting you at the Loudoun Chamber"
+
+HARDCODED_EMAIL_TEMPLATE = """Hi {first_name},
+
+It was great meeting you through the Loudoun Chamber. I've been meaning to reach out.
+
+Through my coaching work, I have the opportunity to speak with professionals, leaders, and business owners. Over time, I found myself wondering whether the challenges I hear are unique to each business or common across many.
+
+That curiosity led me to start the Business Perspectives Project \u2014 a series of conversations with local business owners to better understand the realities of running a business today.
+
+If you're open to a 30-minute virtual conversation, I'd genuinely enjoy learning from your experience. Just reply to this email, and I'll send over a few times that work.
+
+Best,
+
+Arushi Bhardwaj
+Founder | SoulSynergy-Coach
+ICF Professional Certified Coach (PCC)"""
+
+
+def build_hardcoded_email(full_name) -> dict:
+    """Return the fixed follow-up email, with the recipient's first name filled in."""
+    first_name = (full_name or "").strip().split(" ")[0] if full_name else ""
+    greeting_name = first_name if first_name else "there"
+    return {
+        "email_subject": HARDCODED_EMAIL_SUBJECT,
+        "email_draft": HARDCODED_EMAIL_TEMPLATE.format(first_name=greeting_name),
+    }
 
 
 # ============================================================
@@ -180,7 +126,7 @@ def _extract_sync(raw_text: str, model: str = None) -> dict:
         contents=EXTRACT_PROMPT + raw_text,
         config=types.GenerateContentConfig(
             max_output_tokens=2000,
-            temperature=0.7,
+            temperature=0.2,
         ),
     )
 
@@ -199,26 +145,8 @@ def _extract_sync(raw_text: str, model: str = None) -> dict:
     except (ValueError, TypeError):
         result["confidence"] = 0.5
 
-    # Ensure email fields exist (AI should generate them, but fallback just in case)
-    if not result.get("email_subject"):
-        result["email_subject"] = "Great meeting you at the Loudoun Chamber"
-    if not result.get("email_draft"):
-        first = (result.get("full_name") or "").split(" ")[0] or "there"
-        result["email_draft"] = (
-            f"Hi {first},\n\n"
-            f"It was great meeting you through the Loudoun Chamber. I've been meaning to reach out.\n\n"
-            f"Through my coaching work, I have the opportunity to speak with professionals, leaders, "
-            f"and business owners. Over time, I found myself wondering whether the challenges I hear "
-            f"are unique to each business or common across many.\n\n"
-            f"That curiosity led me to start the Business Perspectives Project \u2014 a series of conversations "
-            f"with local business owners to better understand the realities of running a business today.\n\n"
-            f"If you're open to a 30-minute virtual conversation, I'd genuinely enjoy learning from your "
-            f"experience. Just reply to this email, and I'll send over a few times that work.\n\n"
-            f"Best,\n\n"
-            f"Arushi Bhardwaj\n"
-            f"Founder | SoulSynergy-Coach\n"
-            f"ICF Professional Certified Coach (PCC)"
-        )
+    # Always use the hardcoded email template — no LLM generation
+    result.update(build_hardcoded_email(result.get("full_name")))
 
     return result
 
